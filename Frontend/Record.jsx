@@ -1,268 +1,187 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import { BottomTabBar } from '@react-navigation/bottom-tabs';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  ScrollView,
+} from 'react-native';
 
+export default function RecordingsList() {
+  const [recordings, setRecordings] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [modalVisible, setModalVisible] = useState(false);
 
-/**
- * This is the Record page of the application.
- */
-const Record = () => {
+  useEffect(() => {
+    fetchRecordings();
+  }, []);
 
-
-    const [message, setMessage] = useState("");
-    const [timer, setTimer] = useState(0);
-    const [startTimer, setStartTimer] = useState(false);
-    const [isStopped, setIsStopped] = useState(false);
-    const [displayNotes, setDisplayNotes] = useState(false);
-    const [notes, setNotes] = useState();
-
-
-    useEffect(() => {
-        let time;
-
-
-        if (startTimer) {
-            time = setInterval(() => {
-                setTimer(prev => prev + 1)
-            }, 1000);
-
-
-            if (Math.floor(timer / 60) == 10) {
-                handleTimeLimit();
-            }
-        }
-
-
-        return () => clearInterval(time);
-    }, [timer, startTimer]);
-
-
-    const handleStartRecording = () => {
-        setStartTimer(true);
-    };
-
-
-    const handleRestartRecording = () => {
-        setTimer(0);
-        setStartTimer(true);
-        setIsStopped(false);
-    };
-
-
-    const handleStopRecording = () => {
-        setStartTimer(false);
-        setIsStopped(true);
-    };
-
-
-    const handleGenerateNotes = () => {
-        setTimer(0);
-        setStartTimer(false);
-        setIsStopped(true);
-        setDisplayNotes(true);
-        setMessage("Here is your first message");
+  const fetchRecordings = async () => {
+    try {
+      const response = await fetch('http://10.0.0.65:5000/recordings-list');
+      const files = await response.json();
+      setRecordings(files);
+    } catch (error) {
+      console.error('Failed to fetch recordings:', error);
     }
+  };
 
+  const transcribeFile = async (filename) => {
+    setLoading(true);
+    setTranscript('');
+    setSelectedFile(filename);
 
-    const handleTimeLimit = () => {
-        setStartTimer(false);
-        setIsStopped(true);
-        setMessage("TimeLimit Reached");
-    };
+    try {
+      const response = await fetch('http://10.0.0.65:5000/transcribe-recording', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename }),
+      });
 
+      if (!response.ok) throw new Error(`Error ${response.status}`);
 
-    const handleSaveNote = () => {
-        setNotes(message);
-        setMessage('Note Saved to Database');
-        setDisplayNotes(false);
-        setIsStopped(false);
-        setTimer(0);
+      const data = await response.json();
+      setTranscript(data.transcript || 'No transcript returned.');
+      setModalVisible(true);
+    } catch (error) {
+      console.error('Transcription error:', error);
+      setTranscript('Failed to transcribe recording');
+      setModalVisible(true);
+    } finally {
+      setLoading(false);
     }
+  };
 
+  const renderItem = ({ item }) => (
+    <TouchableOpacity
+      style={[styles.item, item === selectedFile ? styles.selected : null]}
+      onPress={() => transcribeFile(item)}
+    >
+      <Text style={styles.itemText}>{item}</Text>
+    </TouchableOpacity>
+  );
 
-    const handleRegenerateNote = () => {
-        setMessage("Regenerated Note");
-    }
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>🎧 Available Recordings</Text>
 
+      <FlatList
+        data={recordings}
+        renderItem={renderItem}
+        keyExtractor={(item) => item}
+        contentContainerStyle={styles.listContainer}
+      />
 
-    return (
-        <>
-            <SafeAreaView style={styles.container}>
-                <LinearGradient
-                    colors={['#6C63FF', '#7F56D9']}
-                    style={styles.header}
-                >
-                    <Text name='displayScreen' style={styles.title}>
-                        Start Recording your Session.
-                    </Text>
+      {loading && <ActivityIndicator size="large" color="#A3E635" style={{ marginTop: 20 }} />}
 
-
-                    <View style={styles.container}>
-                        {/* Timer */}
-                        <View style={styles.timerContainer}>
-                            {displayNotes ?
-                                <Text style={styles.timerText}>
-                                    {message}s
-                                </Text>
-                                :
-                                <Text style={styles.timerText}>
-                                    {Math.floor(timer / 60)}m:{String(timer % 60).padStart(2, '0')}s
-                                </Text>
-                            }
-                        </View>
-                        {
-                            !displayNotes ?
-                                <View style={styles.buttonContainer}>
-                                    {!isStopped ?
-                                        <TouchableOpacity style={styles.buttonStart} onPress={handleStartRecording}>
-                                            <Ionicons name='mic' size={28} color="white" />
-                                            <Text style={styles.buttonText}>Start</Text>
-                                        </TouchableOpacity>
-                                        :
-                                        <TouchableOpacity style={styles.buttonStart} onPress={handleRestartRecording}>
-                                            <Ionicons name='reload-circle' size={28} color="white" />
-                                            <Text style={styles.buttonText}>Restart</Text>
-                                        </TouchableOpacity>
-                                    }
-
-
-                                    {!isStopped ?
-                                        <TouchableOpacity style={styles.buttonStop} onPress={handleStopRecording}>
-                                            <Ionicons name='stop' size={28} color='white' />
-                                            <Text style={styles.buttonText}>Stop</Text>
-                                        </TouchableOpacity>
-                                        :
-                                        <TouchableOpacity style={styles.buttonGenerate} onPress={handleGenerateNotes} >
-                                            <Ionicons name='sparkles' size={28} color='white' />
-                                            <Text style={styles.buttonText}>Generate Notes</Text>
-                                        </TouchableOpacity>
-                                    }
-                                </View>
-                                :
-
-
-                                <View style={styles.buttonContainer}>
-                                    <TouchableOpacity style={styles.buttonSaveNotes} onPress={handleSaveNote}>
-                                        <Ionicons name='save' size={28} color="white" />
-                                        <Text style={styles.buttonText}>Save Note</Text>
-                                    </TouchableOpacity>
-
-
-                                    <TouchableOpacity style={styles.buttonRegenerate} onPress={handleRegenerateNote}>
-                                        <Ionicons name='sparkles' size={28} color="white" />
-                                        <Text style={styles.buttonText}>Recreate Note</Text>
-                                    </TouchableOpacity>
-                                </View>
-
-
-                        }
-
-
-                    </View>
-                </LinearGradient>
-            </SafeAreaView>
-        </>
-    );
-};
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>📝 Transcript</Text>
+            <ScrollView style={styles.modalBody}>
+              <Text style={styles.modalText}>{transcript}</Text>
+            </ScrollView>
+            <Pressable style={styles.closeButton} onPress={() => setModalVisible(false)}>
+              <Text style={styles.buttonText}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
 
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-    },
-    timerContainer: {
-        position: 'absolute',
-        top: 40,
-        alignSelf: 'center',
-        backgroundColor: '#1a1a1a',
-        borderRadius: 12,
-        paddingHorizontal: 16,
-        paddingVertical: 6,
-        borderWidth: 1,
-        borderColor: '#4b0082',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.5,
-        shadowRadius: 6,
-        elevation: 6,
-    },
-
-
-    timerText: {
-        color: '#c0c0c0',
-        fontSize: 18,
-        fontFamily: 'monospace',
-        letterSpacing: 1.5,
-    },
-    title: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        paddingTop: 20,
-        paddingLeft: 10,
-        color: '#F1F5F9',
-        marginBottom: 10,
-    },
-    subtitle: {
-        fontSize: 16,
-        color: '#E2E8F0',
-    }, header: {
-        height: '100%',
-        width: '100%'
-    },
-    buttonContainer: {
-        position: 'absolute',
-        bottom: 30,
-        width: '100%',
-        flexDirection: 'row',
-        justifyContent: 'space-around',
-        paddingHorizontal: 20,
-    },
-    buttonStart: {
-        backgroundColor: '#A3E635',
-        width: '45%',
-        paddingVertical: 10,
-        borderRadius: 10,
-        alignItems: 'center',
-    },
-    buttonStop: {
-        backgroundColor: '#F87171',
-        width: '45%',
-        paddingVertical: 10,
-        borderRadius: 10,
-        alignItems: 'center',
-    },
-    buttonGenerate: {
-        backgroundColor: 'violet',
-        width: '45%',
-        paddingVertical: 10,
-        borderRadius: 10,
-        alignItems: 'center',
-    }, buttonRegenerate: {
-        backgroundColor: '#FFA552',
-        width: '45%',
-        paddingVertical: 10,
-        borderRadius: 10,
-        alignItems: 'center'
-    },
-    buttonSaveNotes: {
-        backgroundColor: '#191970',
-        width: '45%',
-        paddingVertical: 10,
-        borderRadius: 10,
-        alignItems: 'center',
-    },
-    buttonText: {
-        marginTop: 10,
-        fontSize: 20,
-        fontWeight: '600',
-        color: 'white',
-    }
+  container: {
+    flex: 1,
+    backgroundColor: '#0f0f0f',
+    paddingTop: 60,
+    paddingHorizontal: 20,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#F1F5F9',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  listContainer: {
+    paddingBottom: 20,
+  },
+  item: {
+    padding: 15,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#4b0082',
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  selected: {
+    backgroundColor: '#4b0082',
+  },
+  itemText: {
+    color: '#E2E8F0',
+    fontSize: 16,
+    fontFamily: 'monospace',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15,15,15,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    width: '90%',
+    maxHeight: '80%',
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#A3E635',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#c0c0c0',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  modalBody: {
+    maxHeight: 300,
+    marginBottom: 20,
+  },
+  modalText: {
+    fontSize: 16,
+    color: '#E2E8F0',
+    fontFamily: 'monospace',
+    lineHeight: 22,
+  },
+  closeButton: {
+    backgroundColor: '#4b0082',
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
 });
-
-
-export default Record;
-
-
-

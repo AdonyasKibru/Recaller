@@ -4,22 +4,45 @@
   "main": "index.js",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web"
   },
   "dependencies": {
+    "@google-cloud/speech": "^7.1.0",
     "@react-navigation/bottom-tabs": "^7.3.17",
     "@react-navigation/native": "^7.1.13",
     "@react-navigation/native-stack": "^7.3.18",
+    "buffer": "^6.0.3",
+    "cors": "^2.8.5",
     "expo": "~53.0.12",
+    "expo-av": "~15.1.6",
     "expo-linear-gradient": "^14.1.5",
     "expo-status-bar": "~2.2.3",
+    "express": "^5.1.0",
+    "multer": "^2.0.1",
     "react": "^19.0.0",
-    "react-native": "0.79.4"
+    "react-native": "0.79.4",
+    "react-native-audio-record": "^0.2.2",
+    "react-native-live-audio-stream": "^1.1.1",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
-    "@babel/core": "^7.20.0"
+    "@babel/core": "^7.20.0",
+    "@react-native-community/cli": "latest"
   },
-  "private": true
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AdonyasKibru/Recaller.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/AdonyasKibru/Recaller/issues"
+  },
+  "homepage": "https://github.com/AdonyasKibru/Recaller#readme",
+  "description": ""
 }
