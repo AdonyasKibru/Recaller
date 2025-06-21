@@ -55,12 +55,24 @@ app.post('/transcribe-recording', async (req, res) => {
   }
 });
 
-// ✅ Test endpoint to confirm backend is running
-app.get('/', (req, res) => {
-  res.json({ message: 'Backend is working.' });
+app.post('/save-transcript', express.json(), (req, res) => {
+  const { filename, transcript } = req.body;
+
+  if (!filename || !transcript) {
+    return res.status(400).json({ error: 'Missing filename or transcript' });
+  }
+
+  const safeFilename = path.basename(filename).replace(/\.[^/.]+$/, '');
+  const outputPath = path.join(__dirname, 'transcripts', `${safeFilename}.txt`);
+
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, transcript, 'utf8');
+
+  console.log(`[💾 BACKEND] Transcript saved: ${outputPath}`);
+  res.json({ success: true, path: outputPath });
 });
 
-// ✅ Start server
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`✅ Server started on http://localhost:${PORT}`);
