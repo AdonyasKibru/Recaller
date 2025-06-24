@@ -38,4 +38,6 @@ yarn-error.*
 *.tsbuildinfo
 
 #api key
-speech-key.json.env
+speech-key.json
+speech-key.json
+speech-key.json

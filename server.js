@@ -3,18 +3,17 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const speech = require('@google-cloud/speech');
+
 require('dotenv').config();
-const OpenAI = require('openai');
+
+const { OpenAI } = require("openai");
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const client = new speech.SpeechClient({ keyFilename: './speech-key.json' });
-
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
 
 const recordingsDir = path.join(__dirname, 'recordings');
 const transcriptionsDir = path.join(__dirname, 'transcripts');
@@ -112,7 +111,7 @@ app.post('/summarize-transcript', async (req, res) => {
 
     try {
         const completion = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo", // Or "gpt-3.5-turbo"
+            model: "gpt-3.5-turbo", // or "gpt-4-turbo" if you have access
             messages: [
                 {
                     role: "system",
@@ -128,7 +127,7 @@ app.post('/summarize-transcript', async (req, res) => {
         const summary = completion.choices[0].message.content;
         res.json({ summary });
     } catch (err) {
-        console.error('[BACKEND] OpenAI summarization error:', err.response?.data || err.message);
+        console.error('[BACKEND] OpenAI summarization error:', err);
         res.status(500).json({ error: 'Failed to summarize transcript' });
     }
 });
