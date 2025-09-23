@@ -7,10 +7,13 @@ import {
     StyleSheet,
     ActivityIndicator,
     Modal,
-    Pressable,
     ScrollView,
+    Pressable,
     Alert,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const BACKEND_URL = 'http://10.0.0.65:5000';
 
 export default function RecordingsList() {
     const [recordings, setRecordings] = useState([]);
@@ -18,40 +21,50 @@ export default function RecordingsList() {
     const [transcript, setTranscript] = useState('');
     const [selectedFile, setSelectedFile] = useState(null);
     const [modalVisible, setModalVisible] = useState(false);
+    const [username, setUsername] = useState('');
 
     useEffect(() => {
+        loadUsername();
         fetchRecordings();
     }, []);
 
+    const loadUsername = async () => {
+        const storedUsername = await AsyncStorage.getItem('username');
+        if (storedUsername) setUsername(storedUsername);
+        console.log('[FRONTEND] Username from AsyncStorage:', storedUsername);
+    };
+
     const fetchRecordings = async () => {
         try {
-            const response = await fetch('http://10.0.0.65:5000/recordings-list');
-            const files = await response.json();
+            const res = await fetch(`${BACKEND_URL}/recordings-list`);
+            const files = await res.json();
             setRecordings(files);
-        } catch (error) {
-            console.error('Failed to fetch recordings:', error);
+        } catch (err) {
+            console.error('[FRONTEND] Failed to fetch recordings:', err);
         }
     };
 
     const transcribeFile = async (filename) => {
         setLoading(true);
-        setTranscript('');
         setSelectedFile(filename);
+        setTranscript('');
 
         try {
-            const response = await fetch('http://10.0.0.65:5000/transcribe-recording', {
+            console.log('[FRONTEND] Sending request to backend for transcription of:', filename);
+            const res = await fetch(`${BACKEND_URL}/transcribe-recording`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ filename }),
+                body: JSON.stringify({ filename, username }),
             });
 
-            if (!response.ok) throw new Error(`Error ${response.status}`);
+            console.log('[FRONTEND] Response status:', res.status);
+            const data = await res.json();
+            console.log('[FRONTEND] Response data:', data);
 
-            const data = await response.json();
             setTranscript(data.transcript || 'No transcript returned.');
             setModalVisible(true);
-        } catch (error) {
-            console.error('Transcription error:', error);
+        } catch (err) {
+            console.error('[FRONTEND] Transcription error:', err);
             setTranscript('Failed to transcribe recording');
             setModalVisible(true);
         } finally {
@@ -61,24 +74,15 @@ export default function RecordingsList() {
 
     const saveTranscriptToServer = async () => {
         try {
-            const response = await fetch('http://10.0.0.65:5000/save-transcript', {
+            const res = await fetch(`${BACKEND_URL}/save-transcript`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    filename: selectedFile,
-                    transcript: transcript,
-                }),
+                body: JSON.stringify({ filename: selectedFile, transcript }),
             });
-
-            const data = await response.json();
-            if (data.success) {
-                Alert.alert('Saved', 'Transcript saved to server.');
-            } else {
-                Alert.alert('Failed', 'Could not save transcript.');
-            }
+            const data = await res.json();
+            Alert.alert(data.success ? 'Saved' : 'Failed', data.success ? 'Transcript saved.' : 'Could not save transcript.');
         } catch (err) {
-            console.error('Save error:', err);
-            Alert.alert('Error', 'An error occurred while saving.');
+            console.error('[FRONTEND] Save transcript error:', err);
         }
     };
 
@@ -98,18 +102,12 @@ export default function RecordingsList() {
             <FlatList
                 data={recordings}
                 renderItem={renderItem}
-                keyExtractor={(item) => item}
-                contentContainerStyle={styles.listContainer}
+                keyExtractor={item => item}
             />
 
             {loading && <ActivityIndicator size="large" color="#A3E635" style={{ marginTop: 20 }} />}
 
-            <Modal
-                animationType="slide"
-                transparent={true}
-                visible={modalVisible}
-                onRequestClose={() => setModalVisible(false)}
-            >
+            <Modal visible={modalVisible} transparent animationType="slide">
                 <View style={styles.modalBackdrop}>
                     <View style={styles.modalContainer}>
                         <Text style={styles.modalTitle}>📝 Transcript</Text>
@@ -134,94 +132,17 @@ export default function RecordingsList() {
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#0f0f0f',
-        paddingTop: 60,
-        paddingHorizontal: 20,
-    },
-    title: {
-        fontSize: 22,
-        fontWeight: 'bold',
-        color: '#F1F5F9',
-        marginBottom: 20,
-        textAlign: 'center',
-    },
-    listContainer: {
-        paddingBottom: 20,
-    },
-    item: {
-        padding: 15,
-        backgroundColor: '#1a1a1a',
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: '#4b0082',
-        marginBottom: 12,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.4,
-        shadowRadius: 6,
-        elevation: 4,
-    },
-    selected: {
-        backgroundColor: '#4b0082',
-    },
-    itemText: {
-        color: '#E2E8F0',
-        fontSize: 16,
-        fontFamily: 'monospace',
-    },
-    modalBackdrop: {
-        flex: 1,
-        backgroundColor: 'rgba(15,15,15,0.9)',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    modalContainer: {
-        width: '90%',
-        maxHeight: '80%',
-        backgroundColor: '#1a1a1a',
-        borderRadius: 12,
-        padding: 20,
-        borderWidth: 1,
-        borderColor: '#A3E635',
-    },
-    modalTitle: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: '#c0c0c0',
-        marginBottom: 10,
-        textAlign: 'center',
-    },
-    modalBody: {
-        maxHeight: 300,
-        marginBottom: 20,
-    },
-    modalText: {
-        fontSize: 16,
-        color: '#E2E8F0',
-        fontFamily: 'monospace',
-        lineHeight: 22,
-    },
-    saveButton: {
-        backgroundColor: '#1e90ff',
-        paddingVertical: 10,
-        borderRadius: 10,
-        alignItems: 'center',
-        flex: 1,
-        marginRight: 10,
-    },
-    closeButton: {
-        backgroundColor: '#4b0082',
-        paddingVertical: 10,
-        borderRadius: 10,
-        alignItems: 'center',
-        flex: 1,
-        marginLeft: 10,
-    },
-    buttonText: {
-        color: '#fff',
-        fontSize: 18,
-        fontWeight: '600',
-    },
+    container: { flex: 1, backgroundColor: '#0f0f0f', paddingTop: 60, paddingHorizontal: 20 },
+    title: { fontSize: 22, fontWeight: 'bold', color: '#F1F5F9', marginBottom: 20, textAlign: 'center' },
+    item: { padding: 15, backgroundColor: '#1a1a1a', borderRadius: 10, borderWidth: 1, borderColor: '#4b0082', marginBottom: 12 },
+    selected: { backgroundColor: '#4b0082' },
+    itemText: { color: '#E2E8F0', fontSize: 16, fontFamily: 'monospace' },
+    modalBackdrop: { flex: 1, backgroundColor: 'rgba(15,15,15,0.9)', justifyContent: 'center', alignItems: 'center' },
+    modalContainer: { width: '90%', maxHeight: '80%', backgroundColor: '#1a1a1a', borderRadius: 12, padding: 20, borderWidth: 1, borderColor: '#A3E635' },
+    modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#c0c0c0', marginBottom: 10, textAlign: 'center' },
+    modalBody: { maxHeight: 300, marginBottom: 20 },
+    modalText: { fontSize: 16, color: '#E2E8F0', fontFamily: 'monospace', lineHeight: 22 },
+    saveButton: { backgroundColor: '#1e90ff', paddingVertical: 10, borderRadius: 10, alignItems: 'center', flex: 1, marginRight: 10 },
+    closeButton: { backgroundColor: '#4b0082', paddingVertical: 10, borderRadius: 10, alignItems: 'center', flex: 1, marginLeft: 10 },
+    buttonText: { color: '#fff', fontSize: 18, fontWeight: '600' },
 });

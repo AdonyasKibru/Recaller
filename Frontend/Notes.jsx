@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import {
-    View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, Alert
+    View,
+    Text,
+    StyleSheet,
+    TouchableOpacity,
+    ScrollView,
+    Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const BACKEND_URL = 'http://10.0.0.65:5000';
 
-const Notes = () => {
+export default function Notes() {
     const [notes, setNotes] = useState([]);
     const [selectedNote, setSelectedNote] = useState(null);
     const [transcript, setTranscript] = useState('');
@@ -14,29 +19,38 @@ const Notes = () => {
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        fetch(`${BACKEND_URL}/transcriptions-list`)
-            .then(res => res.json())
-            .then(setNotes)
-            .catch(err => console.error('Failed to fetch notes:', err));
+        fetchNotes();
     }, []);
 
-    const fetchTranscriptText = async (filename) => {
+    const fetchNotes = async () => {
+        try {
+            const res = await fetch(`${BACKEND_URL}/transcriptions-list`);
+            const data = await res.json();
+            setNotes(data);
+        } catch (err) {
+            console.error('Failed to fetch notes:', err);
+        }
+    };
+
+    const fetchTranscript = async (filename) => {
         try {
             const res = await fetch(`${BACKEND_URL}/transcripts/${filename}`);
             const text = await res.text();
             setTranscript(text);
         } catch (err) {
             console.error('Error fetching transcript:', err);
+            Alert.alert('Error', 'Failed to fetch transcript.');
         }
     };
 
     const handleNoteSelect = async (filename) => {
         setSelectedNote(filename);
         setSummary('');
-        await fetchTranscriptText(filename);
+        await fetchTranscript(filename);
     };
 
     const handleSummarize = async () => {
+        if (!transcript) return Alert.alert('Error', 'Transcript is empty.');
         setLoading(true);
         try {
             const res = await fetch(`${BACKEND_URL}/summarize-transcript`, {
@@ -48,13 +62,14 @@ const Notes = () => {
             if (data.summary) setSummary(data.summary);
             else Alert.alert('Error', data.error || 'Failed to summarize.');
         } catch (err) {
-            console.error('Summarization failed:', err);
-            Alert.alert('Error', 'Failed to summarize.');
+            console.error('Summarization error:', err);
+            Alert.alert('Error', 'Failed to summarize transcript.');
         }
         setLoading(false);
     };
 
     const handleSaveSummary = async () => {
+        if (!summary) return Alert.alert('Error', 'Summary is empty.');
         try {
             const res = await fetch(`${BACKEND_URL}/save-transcript`, {
                 method: 'POST',
@@ -68,130 +83,111 @@ const Notes = () => {
             if (data.success) Alert.alert('Saved', 'Summary saved successfully!');
             else Alert.alert('Error', 'Failed to save summary.');
         } catch (err) {
-            console.error('Save failed:', err);
-            Alert.alert('Error', 'Save request failed.');
+            console.error('Save error:', err);
+            Alert.alert('Error', 'Failed to save summary.');
         }
     };
 
-    const reset = () => {
+    const handleBack = () => {
         setSelectedNote(null);
         setTranscript('');
         setSummary('');
     };
 
     return (
-        <SafeAreaView style={styles.container}>
-            <LinearGradient colors={['#6C63FF', '#7F56D9']} style={styles.header}>
-                {!selectedNote ? (
-                    <ScrollView contentContainerStyle={styles.buttonContainer}>
-                        {notes.map((note, index) => (
-                            <TouchableOpacity
-                                key={index}
-                                style={styles.noteButton}
-                                onPress={() => handleNoteSelect(note)}
-                            >
-                                <Text style={styles.buttonText}>Note {index + 1}</Text>
+        <LinearGradient colors={['#6C63FF', '#7F56D9']} style={styles.container}>
+            {!selectedNote ? (
+                <ScrollView contentContainerStyle={styles.notesList}>
+                    {notes.map((note, index) => (
+                        <TouchableOpacity
+                            key={index}
+                            style={styles.noteButton}
+                            onPress={() => handleNoteSelect(note)}
+                        >
+                            <Text style={styles.noteButtonText}>{note}</Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
+            ) : (
+                <ScrollView contentContainerStyle={styles.noteContent}>
+                    <Text style={styles.sectionLabel}>Transcript:</Text>
+                    <Text style={styles.transcriptText}>{transcript}</Text>
+
+                    <TouchableOpacity style={styles.summarizeButton} onPress={handleSummarize}>
+                        <Text style={styles.buttonText}>{loading ? 'Summarizing...' : 'Summarize'}</Text>
+                    </TouchableOpacity>
+
+                    {summary ? (
+                        <>
+                            <Text style={styles.sectionLabel}>Summary:</Text>
+                            <Text style={styles.summaryText}>{summary}</Text>
+                            <TouchableOpacity style={styles.saveButton} onPress={handleSaveSummary}>
+                                <Text style={styles.buttonText}>Save Summary</Text>
                             </TouchableOpacity>
-                        ))}
-                    </ScrollView>
-                ) : (
-                    <ScrollView contentContainerStyle={styles.noteView}>
-                        <Text style={styles.label}>Transcript:</Text>
-                        <Text style={styles.noteText}>{transcript}</Text>
+                        </>
+                    ) : null}
 
-                        <TouchableOpacity style={styles.buttonAction} onPress={handleSummarize}>
-                            <Text style={styles.buttonText}>{loading ? 'Summarizing...' : 'Summarize'}</Text>
-                        </TouchableOpacity>
-
-                        {summary !== '' && (
-                            <>
-                                <Text style={styles.label}>Summary:</Text>
-                                <Text style={styles.summaryText}>{summary}</Text>
-                                <TouchableOpacity style={styles.buttonSave} onPress={handleSaveSummary}>
-                                    <Text style={styles.buttonText}>Save Summary</Text>
-                                </TouchableOpacity>
-                            </>
-                        )}
-
-                        <TouchableOpacity style={styles.buttonBack} onPress={reset}>
-                            <Text style={styles.buttonText}>Back</Text>
-                        </TouchableOpacity>
-                    </ScrollView>
-                )}
-            </LinearGradient>
-        </SafeAreaView>
+                    <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+                        <Text style={styles.buttonText}>Back</Text>
+                    </TouchableOpacity>
+                </ScrollView>
+            )}
+        </LinearGradient>
     );
-};
-
-export default Notes;
+}
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-    },
-    header: {
-        height: '100%',
-        width: '100%',
-        paddingTop: 50,
-    },
-    buttonContainer: {
-        alignItems: 'center',
-        paddingBottom: 100,
-        paddingHorizontal: 20,
-    },
+    container: { flex: 1, paddingTop: 50 },
+    notesList: { alignItems: 'center', paddingBottom: 40 },
     noteButton: {
         backgroundColor: '#1E1B4B',
-        width: '80%',
-        paddingVertical: 25,
+        width: '85%',
+        paddingVertical: 20,
         borderRadius: 15,
         marginVertical: 10,
         alignItems: 'center',
     },
-    buttonText: {
-        color: 'white',
-        fontSize: 18,
-    },
-    noteView: {
-        paddingHorizontal: 20,
-        paddingBottom: 80,
-    },
-    label: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        marginTop: 20,
-        color: 'white',
-    },
-    noteText: {
-        marginTop: 10,
+    noteButtonText: { color: '#FFF', fontSize: 18 },
+    noteContent: { paddingHorizontal: 20, paddingBottom: 40 },
+    sectionLabel: { fontSize: 18, fontWeight: 'bold', color: '#FFF', marginTop: 20 },
+    transcriptText: {
         fontSize: 16,
         color: '#DDD',
+        marginTop: 10,
         fontFamily: 'monospace',
+        lineHeight: 22,
     },
     summaryText: {
-        marginTop: 10,
         fontSize: 16,
         color: '#A3E635',
+        marginTop: 10,
         fontFamily: 'monospace',
+        lineHeight: 22,
     },
-    buttonAction: {
+    summarizeButton: {
         backgroundColor: '#38BDF8',
-        marginTop: 20,
-        padding: 12,
+        padding: 14,
         borderRadius: 10,
         alignItems: 'center',
+        marginTop: 20,
     },
-    buttonSave: {
+    saveButton: {
         backgroundColor: '#4ADE80',
+        padding: 14,
+        borderRadius: 10,
+        alignItems: 'center',
         marginTop: 20,
-        padding: 12,
-        borderRadius: 10,
-        alignItems: 'center',
     },
-    buttonBack: {
+    backButton: {
         backgroundColor: '#F87171',
-        marginTop: 30,
-        padding: 12,
+        padding: 14,
         borderRadius: 10,
         alignItems: 'center',
+        marginTop: 30,
+    },
+    buttonText: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#FFF',
     },
 });
