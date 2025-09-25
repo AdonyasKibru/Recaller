@@ -16,14 +16,104 @@ app.use(express.json());
 const recordingsDir = path.join(__dirname, 'recordings');
 const transcriptsDir = path.join(__dirname, 'transcripts');
 const usersDir = path.join(__dirname, 'users');
-[recordingsDir, transcriptsDir, usersDir].forEach(dir => { if (!fs.existsSync(dir)) fs.mkdirSync(dir); });
+[recordingsDir, transcriptsDir, usersDir].forEach(dir => {
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir);
+});
 
-// Multer for file uploads
+// Multer config
 const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, recordingsDir),
     filename: (req, file, cb) => cb(null, file.originalname),
 });
 const upload = multer({ storage });
+
+// ================== RECORDINGS ==================
+
+// List recordings
+app.get('/recordings-list', (req, res) => {
+    try {
+        const files = fs.readdirSync(recordingsDir);
+        res.json(files);
+    } catch (err) {
+        console.error('[BACKEND] Failed to read recordings:', err);
+        res.status(500).json({ error: 'Failed to load recordings' });
+    }
+});
+
+// Route for uploading picked audio
+app.post("/pick-and-upload", upload.single("audio"), (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, error: "No file uploaded" });
+        }
+        res.json({ success: true, filename: req.file.filename });
+    } catch (err) {
+        res.status(500).json({ success: false, error: "Server error" });
+    }
+});
+
+// Delete recording
+app.delete('/delete-recording/:filename', (req, res) => {
+    const filename = req.params.filename;
+    const filePath = path.join(recordingsDir, filename);
+
+    if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: 'File not found' });
+    }
+
+    try {
+        fs.unlinkSync(filePath);
+        res.json({ success: true, message: `Deleted ${filename}` });
+    } catch (err) {
+        console.error('[BACKEND] Delete error:', err);
+        res.status(500).json({ error: 'Failed to delete file' });
+    }
+});
+
+// Transcribe recording with Google Speech
+app.post('/transcribe-recording', async (req, res) => {
+    const { filename, username } = req.body;
+    if (!filename || !username) return res.status(400).json({ error: 'Filename and username required' });
+
+    const userFolder = path.join(usersDir, username);
+    const speechKeyPath = path.join(userFolder, 'speech-key.json');
+    if (!fs.existsSync(speechKeyPath)) {
+        return res.status(400).json({ error: 'User Google Speech key not found' });
+    }
+
+    const filePath = path.join(recordingsDir, filename);
+    if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: 'Audio file not found' });
+    }
+
+    try {
+        const client = new SpeechClient({ keyFilename: speechKeyPath });
+        const audioBytes = fs.readFileSync(filePath).toString('base64');
+
+        const [operation] = await client.longRunningRecognize({
+            audio: { content: audioBytes },
+            config: {
+                encoding: 'LINEAR16',
+                sampleRateHertz: 44100,
+                languageCode: 'en-US',
+            },
+        });
+
+        const [response] = await operation.promise();
+        const transcript = response.results.map(r => r.alternatives[0].transcript).join('\n');
+
+        // Save transcript with .txt extension in transcripts/
+        const transcriptName = `${path.parse(filename).name}_${username}.txt`;
+        fs.writeFileSync(path.join(transcriptsDir, transcriptName), transcript, 'utf8');
+
+        res.json({ success: true, transcript, file: transcriptName });
+    } catch (err) {
+        console.error('[BACKEND] Transcription error:', err);
+        res.status(500).json({ error: 'Failed to transcribe recording' });
+    }
+});
+
+// ================== SETTING ==================
 
 // Save user keys
 app.post('/save-user-keys', upload.single('speechKey'), (req, res) => {
@@ -40,63 +130,25 @@ app.post('/save-user-keys', upload.single('speechKey'), (req, res) => {
     if (req.file) {
         const destPath = path.join(userFolder, 'speech-key.json');
         fs.renameSync(req.file.path, destPath);
-        console.log('[BACKEND] Speech key saved at:', destPath);
     }
 
     res.json({ success: true, message: 'Keys saved successfully' });
 });
 
-// Transcribe recording
-app.post('/transcribe-recording', async (req, res) => {
-    const { filename, username } = req.body;
-    if (!filename || !username) return res.status(400).json({ error: 'Filename and username required' });
+// ================== NOTES ==================
 
-    const userFolder = path.join(usersDir, username);
-    const speechKeyPath = path.join(userFolder, 'speech-key.json');
-    if (!fs.existsSync(speechKeyPath)) return res.status(400).json({ error: 'User Google Speech key not found' });
-
-    const filePath = path.join(recordingsDir, filename);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Audio file not found' });
-
-    try {
-        const client = new SpeechClient({ keyFilename: speechKeyPath });
-        const audioBytes = fs.readFileSync(filePath).toString('base64');
-
-        const [operation] = await client.longRunningRecognize({
-            audio: { content: audioBytes },
-            config: { encoding: 'LINEAR16', sampleRateHertz: 44100, languageCode: 'en-US' },
-        });
-
-        const [response] = await operation.promise();
-        const transcript = response.results.map(r => r.alternatives[0].transcript).join('\n');
-
-        // Save transcript
-        fs.writeFileSync(path.join(transcriptsDir, `${filename}.txt`), transcript, 'utf8');
-
-        res.json({ transcript });
-    } catch (err) {
-        console.error('[BACKEND] Transcription error:', err);
-        res.status(500).json({ error: 'Failed to transcribe recording' });
-    }
-});
-
+// Summarize transcript with OpenAI
 app.post('/summarize-transcript', async (req, res) => {
     const { transcript, username } = req.body;
     if (!transcript) return res.status(400).json({ error: 'Transcript required' });
 
     try {
         let openaiKey = process.env.OPENAI_API_KEY;
-        console.log('[BACKEND] Initial OpenAI key from env:', openaiKey);
 
         if (username) {
-            const keyPath = path.join(usersDir, username, 'openai-Key.txt');
-            console.log('[BACKEND] Looking for user key at:', keyPath);
-
+            const keyPath = path.join(usersDir, username, 'openai-key.txt'); // ✅ fixed typo
             if (fs.existsSync(keyPath)) {
                 openaiKey = fs.readFileSync(keyPath, 'utf8').trim();
-                console.log('[BACKEND] User-specific OpenAI key loaded:', openaiKey ? 'YES' : 'EMPTY');
-            } else {
-                console.log('[BACKEND] User key file not found');
             }
         }
 
@@ -119,5 +171,5 @@ app.post('/summarize-transcript', async (req, res) => {
     }
 });
 
-
+// Start server
 app.listen(PORT, () => console.log(`✅ Server running at http://localhost:${PORT}`));

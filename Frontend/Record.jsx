@@ -12,6 +12,7 @@ import {
     Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as DocumentPicker from 'expo-document-picker';
 
 const BACKEND_URL = 'http://10.0.0.65:5000';
 
@@ -22,46 +23,101 @@ export default function RecordingsList() {
     const [selectedFile, setSelectedFile] = useState(null);
     const [modalVisible, setModalVisible] = useState(false);
     const [username, setUsername] = useState('');
-
+   
     useEffect(() => {
         loadUsername();
         fetchRecordings();
-    }, []);
+    }, [recordings]);
 
+    // Load stored username (if you save one in AsyncStorage elsewhere)
     const loadUsername = async () => {
         const storedUsername = await AsyncStorage.getItem('username');
         if (storedUsername) setUsername(storedUsername);
-        console.log('[FRONTEND] Username from AsyncStorage:', storedUsername);
     };
 
+    // Fetch recordings from backend
     const fetchRecordings = async () => {
         try {
             const res = await fetch(`${BACKEND_URL}/recordings-list`);
             const files = await res.json();
             setRecordings(files);
         } catch (err) {
-            console.error('[FRONTEND] Failed to fetch recordings:', err);
+            console.error('[FRONTEND] Fetch recordings error:', err);
         }
     };
 
+    // Pick and upload a .wav file
+    const pickAndUpload = async () => {
+        try {
+            // 1. Pick file
+            const result = await DocumentPicker.getDocumentAsync({
+                type: ["audio/*"],
+                copyToCacheDirectory: true,
+            });
+
+            if (result.canceled) {
+                return;
+            }
+
+            const file = result.assets[0];
+
+            // 2. Prepare FormData
+            const formData = new FormData();
+            formData.append("audio", {
+                uri: file.uri,
+                type: file.mimeType || "audio/wav",
+                name: file.name || "recording.wav",
+            });
+
+            // 3. Upload
+            const res = await fetch(`${BACKEND_URL}/pick-and-upload`, {
+                method: "POST",
+                body: formData,
+                headers: {
+                    "Accept": "application/json",
+                },
+            });
+
+            const text = await res.text();
+
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch {
+                throw new Error("Server did not return JSON. Got: " + text);
+            }
+
+            if (data.success) {
+                Alert.alert("Success", "File uploaded: " + data.filename);
+            } else {
+                Alert.alert("Error", data.error || "Upload failed");
+            }
+        } catch (err) {
+            console.error("[FRONTEND] Upload error:", err);
+            Alert.alert("Error", err.message);
+        }
+    };
+
+    // Transcribe a file
     const transcribeFile = async (filename) => {
         setLoading(true);
         setSelectedFile(filename);
         setTranscript('');
 
         try {
-            console.log('[FRONTEND] Sending request to backend for transcription of:', filename);
             const res = await fetch(`${BACKEND_URL}/transcribe-recording`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ filename, username }),
             });
 
-            console.log('[FRONTEND] Response status:', res.status);
             const data = await res.json();
-            console.log('[FRONTEND] Response data:', data);
 
-            setTranscript(data.transcript || 'No transcript returned.');
+            if (data.error) {
+                setTranscript(`Error: ${data.error}`);
+            } else {
+                setTranscript(data.transcript || 'No transcript returned.');
+            }
             setModalVisible(true);
         } catch (err) {
             console.error('[FRONTEND] Transcription error:', err);
@@ -72,41 +128,65 @@ export default function RecordingsList() {
         }
     };
 
-    const saveTranscriptToServer = async () => {
+    // Delete a recording
+    const deleteRecording = async (filename) => {
         try {
-            const res = await fetch(`${BACKEND_URL}/save-transcript`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ filename: selectedFile, transcript }),
+            const res = await fetch(`${BACKEND_URL}/delete-recording/${filename}`, {
+                method: 'DELETE',
             });
             const data = await res.json();
-            Alert.alert(data.success ? 'Saved' : 'Failed', data.success ? 'Transcript saved.' : 'Could not save transcript.');
+            if (data.success) {
+                Alert.alert('Deleted', `${filename} removed.`);
+                fetchRecordings();
+            } else {
+                Alert.alert('Error', data.error || 'Failed to delete.');
+            }
         } catch (err) {
-            console.error('[FRONTEND] Save transcript error:', err);
+            console.error('[FRONTEND] Delete error:', err);
         }
     };
 
+    // Render file item
     const renderItem = ({ item }) => (
-        <TouchableOpacity
-            style={[styles.item, item === selectedFile ? styles.selected : null]}
-            onPress={() => transcribeFile(item)}
-        >
-            <Text style={styles.itemText}>{item}</Text>
-        </TouchableOpacity>
+        <View style={styles.itemRow}>
+            <TouchableOpacity
+                style={[styles.item, item === selectedFile ? styles.selected : null]}
+                onPress={() => transcribeFile(item)}
+            >
+                <Text style={styles.itemText}>{item}</Text>
+            </TouchableOpacity>
+            <Pressable
+                style={styles.deleteButton}
+                onPress={() => deleteRecording(item)}
+            >
+                <Text style={{ color: '#fff' }}>🗑</Text>
+            </Pressable>
+        </View>
     );
 
     return (
         <View style={styles.container}>
             <Text style={styles.title}>🎧 Available Recordings</Text>
 
+            <Pressable style={styles.uploadButton} onPress={pickAndUpload}>
+                <Text style={styles.buttonText}>Upload .wav</Text>
+            </Pressable>
+
             <FlatList
                 data={recordings}
                 renderItem={renderItem}
-                keyExtractor={item => item}
+                keyExtractor={(item) => item}
             />
 
-            {loading && <ActivityIndicator size="large" color="#A3E635" style={{ marginTop: 20 }} />}
+            {loading && (
+                <ActivityIndicator
+                    size="large"
+                    color="#A3E635"
+                    style={{ marginTop: 20 }}
+                />
+            )}
 
+            {/* Transcript Modal */}
             <Modal visible={modalVisible} transparent animationType="slide">
                 <View style={styles.modalBackdrop}>
                     <View style={styles.modalContainer}>
@@ -115,15 +195,12 @@ export default function RecordingsList() {
                             <Text style={styles.modalText}>{transcript}</Text>
                         </ScrollView>
 
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                            <Pressable style={styles.saveButton} onPress={saveTranscriptToServer}>
-                                <Text style={styles.buttonText}>Save</Text>
-                            </Pressable>
-
-                            <Pressable style={styles.closeButton} onPress={() => setModalVisible(false)}>
-                                <Text style={styles.buttonText}>Close</Text>
-                            </Pressable>
-                        </View>
+                        <Pressable
+                            style={styles.closeButton}
+                            onPress={() => setModalVisible(false)}
+                        >
+                            <Text style={styles.buttonText}>Close</Text>
+                        </Pressable>
                     </View>
                 </View>
             </Modal>
@@ -132,17 +209,101 @@ export default function RecordingsList() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#0f0f0f', paddingTop: 60, paddingHorizontal: 20 },
-    title: { fontSize: 22, fontWeight: 'bold', color: '#F1F5F9', marginBottom: 20, textAlign: 'center' },
-    item: { padding: 15, backgroundColor: '#1a1a1a', borderRadius: 10, borderWidth: 1, borderColor: '#4b0082', marginBottom: 12 },
-    selected: { backgroundColor: '#4b0082' },
-    itemText: { color: '#E2E8F0', fontSize: 16, fontFamily: 'monospace' },
-    modalBackdrop: { flex: 1, backgroundColor: 'rgba(15,15,15,0.9)', justifyContent: 'center', alignItems: 'center' },
-    modalContainer: { width: '90%', maxHeight: '80%', backgroundColor: '#1a1a1a', borderRadius: 12, padding: 20, borderWidth: 1, borderColor: '#A3E635' },
-    modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#c0c0c0', marginBottom: 10, textAlign: 'center' },
-    modalBody: { maxHeight: 300, marginBottom: 20 },
-    modalText: { fontSize: 16, color: '#E2E8F0', fontFamily: 'monospace', lineHeight: 22 },
-    saveButton: { backgroundColor: '#1e90ff', paddingVertical: 10, borderRadius: 10, alignItems: 'center', flex: 1, marginRight: 10 },
-    closeButton: { backgroundColor: '#4b0082', paddingVertical: 10, borderRadius: 10, alignItems: 'center', flex: 1, marginLeft: 10 },
-    buttonText: { color: '#fff', fontSize: 18, fontWeight: '600' },
+    container: {
+        flex: 1,
+        backgroundColor: '#0f0f0f',
+        paddingTop: 60,
+        paddingHorizontal: 20,
+    },
+    title: {
+        fontSize: 22,
+        fontWeight: 'bold',
+        color: '#F1F5F9',
+        marginBottom: 20,
+        textAlign: 'center',
+    },
+    uploadButton: {
+        backgroundColor: '#1e90ff',
+        padding: 12,
+        borderRadius: 10,
+        alignItems: 'center',
+        marginBottom: 15,
+    },
+    itemRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    item: {
+        flex: 1,
+        padding: 15,
+        backgroundColor: '#1a1a1a',
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#4b0082',
+    },
+    selected: {
+        backgroundColor: '#4b0082',
+    },
+    itemText: {
+        color: '#E2E8F0',
+        fontSize: 16,
+        fontFamily: 'monospace',
+    },
+    deleteButton: {
+        marginLeft: 10,
+        backgroundColor: '#ff4444',
+        padding: 10,
+        borderRadius: 8,
+    },
+    modalBackdrop: {
+        flex: 1,
+        backgroundColor: 'rgba(15,15,15,0.9)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    modalContainer: {
+        width: '90%',
+        maxHeight: '80%',
+        backgroundColor: '#1a1a1a',
+        borderRadius: 12,
+        padding: 20,
+        borderWidth: 1,
+        borderColor: '#A3E635',
+    },
+    modalTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#c0c0c0',
+        marginBottom: 10,
+        textAlign: 'center',
+    },
+    modalBody: {
+        maxHeight: 300,
+        marginBottom: 20,
+    },
+    modalText: {
+        fontSize: 16,
+        color: '#E2E8F0',
+        fontFamily: 'monospace',
+        lineHeight: 22,
+    },
+    saveButton: {
+        backgroundColor: '#1e90ff',
+        paddingVertical: 10,
+        borderRadius: 10,
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    closeButton: {
+        backgroundColor: '#4b0082',
+        paddingVertical: 10,
+        borderRadius: 10,
+        alignItems: 'center',
+    },
+    buttonText: {
+        color: '#fff',
+        fontSize: 18,
+        fontWeight: '600',
+    },
 });
