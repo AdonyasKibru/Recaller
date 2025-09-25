@@ -19,6 +19,7 @@ const usersDir = path.join(__dirname, 'users');
 [recordingsDir, transcriptsDir, usersDir].forEach(dir => {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir);
 });
+const summariesDir = path.join(__dirname, 'summaries');
 
 // Multer config
 const storage = multer.diskStorage({
@@ -137,28 +138,61 @@ app.post('/save-user-keys', upload.single('speechKey'), (req, res) => {
 
 // ================== NOTES ==================
 
+// 1. List all transcript files
+app.get('/transcriptions-list', (req, res) => {
+    try {
+        const files = fs.readdirSync(transcriptsDir)
+            .filter(file => file.endsWith('.txt')); // only .txt transcripts
+        res.json(files);
+    } catch (err) {
+        console.error('[BACKEND] Failed to list transcriptions:', err);
+        res.status(500).json({ error: 'Failed to list transcriptions' });
+    }
+});
+
+// 2. Fetch a specific transcript file
+app.get('/transcripts/:filename', (req, res) => {
+    try {
+        const { filename } = req.params;
+        const filePath = path.join(transcriptsDir, filename);
+
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).send('Transcript not found');
+        }
+
+        const transcript = fs.readFileSync(filePath, 'utf8');
+        res.send(transcript);
+    } catch (err) {
+        console.error('[BACKEND] Failed to fetch transcript:', err);
+        res.status(500).send('Failed to fetch transcript');
+    }
+});
+
 // Summarize transcript with OpenAI
 app.post('/summarize-transcript', async (req, res) => {
     const { transcript, username } = req.body;
-    if (!transcript) return res.status(400).json({ error: 'Transcript required' });
+
+    if (!transcript || !username)
+        return res.status(400).json({ error: 'Transcript and username required' });
 
     try {
-        let openaiKey = process.env.OPENAI_API_KEY;
+        const keyPath = path.join(usersDir, username, 'openai-key.txt');
 
-        if (username) {
-            const keyPath = path.join(usersDir, username, 'openai-key.txt'); // ✅ fixed typo
-            if (fs.existsSync(keyPath)) {
-                openaiKey = fs.readFileSync(keyPath, 'utf8').trim();
-            }
-        }
+        if (!fs.existsSync(keyPath))
+            return res.status(400).json({ error: 'OpenAI key not found for this user' });
 
-        if (!openaiKey) return res.status(400).json({ error: 'OpenAI key not found' });
+        const openaiKey = fs.readFileSync(keyPath, 'utf8').trim();
 
         const openai = new OpenAI({ apiKey: openaiKey });
+
         const completion = await openai.chat.completions.create({
             model: 'gpt-3.5-turbo',
             messages: [
-                { role: 'system', content: 'Summarize transcripts into short readable notes.' },
+                {
+                    role: 'system', content: `You are an expert note-taking assistant. 
+                      Summarize transcripts into **well-organized, readable notes**. 
+                      Use bullet points, headings, and examples if needed. 
+                      Provide clear explanations of the content for easier understanding.` },
                 { role: 'user', content: transcript },
             ],
         });
@@ -170,6 +204,83 @@ app.post('/summarize-transcript', async (req, res) => {
         res.status(500).json({ error: 'Failed to summarize transcript' });
     }
 });
+
+app.post('/save-summary', (req, res) => {
+    const { filename, summary } = req.body;
+    if (!filename || !summary) {
+        return res.status(400).json({ success: false, error: 'Filename and summary required' });
+    }
+
+    try {
+        const filePath = path.join(summariesDir, filename);
+        fs.writeFileSync(filePath, summary, 'utf8');
+        res.json({ success: true, message: `Summary saved as ${filename}` });
+    } catch (err) {
+        console.error('[BACKEND] Failed to save summary:', err);
+        res.status(500).json({ success: false, error: 'Failed to save summary' });
+    }
+});
+
+// Delete transcript
+app.delete('/delete-transcript/:filename', (req, res) => {
+    const { filename } = req.params;
+    const filePath = path.join(transcriptsDir, filename);
+
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Transcript not found' });
+
+    try {
+        fs.unlinkSync(filePath);
+        res.json({ success: true, message: `Deleted ${filename}` });
+    } catch (err) {
+        console.error('[BACKEND] Delete error:', err);
+        res.status(500).json({ success: false, error: 'Failed to delete transcript' });
+    }
+});
+
+
+// 1️⃣ List all saved summaries
+app.get('/summaries-list', (req, res) => {
+    try {
+        const files = fs.readdirSync(summariesDir).filter(file => file.endsWith('.txt'));
+        res.json(files);
+    } catch (err) {
+        console.error('[BACKEND] Failed to list summaries:', err);
+        res.status(500).json({ error: 'Failed to list summaries' });
+    }
+});
+
+// 2️⃣ Fetch a specific summary
+app.get('/summaries/:filename', (req, res) => {
+    try {
+        const { filename } = req.params;
+        const filePath = path.join(summariesDir, filename);
+
+        if (!fs.existsSync(filePath)) return res.status(404).send('Summary not found');
+
+        const summary = fs.readFileSync(filePath, 'utf8');
+        res.send(summary);
+    } catch (err) {
+        console.error('[BACKEND] Failed to fetch summary:', err);
+        res.status(500).send('Failed to fetch summary');
+    }
+});
+
+// 3️⃣ Delete a summary
+app.delete('/delete-summary/:filename', (req, res) => {
+    const { filename } = req.params;
+    const filePath = path.join(summariesDir, filename);
+
+    if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: 'Summary not found' });
+
+    try {
+        fs.unlinkSync(filePath);
+        res.json({ success: true, message: `Deleted summary ${filename}` });
+    } catch (err) {
+        console.error('[BACKEND] Delete summary error:', err);
+        res.status(500).json({ success: false, error: 'Failed to delete summary' });
+    }
+});
+
 
 // Start server
 app.listen(PORT, () => console.log(`✅ Server running at http://localhost:${PORT}`));

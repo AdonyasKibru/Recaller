@@ -1,193 +1,260 @@
 import React, { useState, useEffect } from 'react';
 import {
-    View,
-    Text,
-    StyleSheet,
-    TouchableOpacity,
-    ScrollView,
-    Alert,
+    View, Text, StyleSheet, TouchableOpacity,
+    ScrollView, Alert, ActivityIndicator
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
 const BACKEND_URL = 'http://10.0.0.65:5000';
 
 export default function Notes() {
-    const [notes, setNotes] = useState([]);
-    const [selectedNote, setSelectedNote] = useState(null);
-    const [transcript, setTranscript] = useState('');
-    const [summary, setSummary] = useState('');
+    const [username, setUsername] = useState(null);
+    const [transcripts, setTranscripts] = useState([]);
+    const [summaries, setSummaries] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [activeSummary, setActiveSummary] = useState(null);
+    const [summaryContent, setSummaryContent] = useState('');
 
+    // Load username
     useEffect(() => {
-        fetchNotes();
+        const loadUsername = async () => {
+            const storedUsername = await AsyncStorage.getItem('username');
+            if (!storedUsername) Alert.alert('Error', 'Username not found. Set it in Settings.');
+            else setUsername(storedUsername);
+        };
+        loadUsername();
     }, []);
 
-    const fetchNotes = async () => {
+    // Fetch transcripts & summaries
+    useEffect(() => {
+        fetchTranscripts();
+        fetchSummaries();
+    }, []);
+
+    const fetchTranscripts = async () => {
         try {
             const res = await fetch(`${BACKEND_URL}/transcriptions-list`);
             const data = await res.json();
-            setNotes(data);
+            setTranscripts(data);
         } catch (err) {
-            console.error('Failed to fetch notes:', err);
+            console.error(err);
+            Alert.alert('Error', 'Failed to fetch transcripts.');
         }
     };
 
-    const fetchTranscript = async (filename) => {
+    const fetchSummaries = async () => {
         try {
-            const res = await fetch(`${BACKEND_URL}/transcripts/${filename}`);
-            const text = await res.text();
-            setTranscript(text);
+            const res = await fetch(`${BACKEND_URL}/summaries-list`);
+            const data = await res.json();
+            setSummaries(data);
         } catch (err) {
-            console.error('Error fetching transcript:', err);
-            Alert.alert('Error', 'Failed to fetch transcript.');
+            console.error(err);
+            Alert.alert('Error', 'Failed to fetch summaries.');
         }
     };
 
-    const handleNoteSelect = async (filename) => {
-        setSelectedNote(filename);
-        setSummary('');
-        await fetchTranscript(filename);
+    // Delete transcript
+    const deleteTranscript = async (filename) => {
+        Alert.alert('Confirm', `Delete transcript "${filename}"?`, [
+            { text: 'Cancel', style: 'cancel' },
+            {
+                text: 'Delete', style: 'destructive', onPress: async () => {
+                    try {
+                        const res = await fetch(`${BACKEND_URL}/delete-transcript/${filename}`, { method: 'DELETE' });
+                        const data = await res.json();
+                        if (data.success) {
+                            Alert.alert('Deleted', filename);
+                            fetchTranscripts();
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        Alert.alert('Error', 'Failed to delete transcript');
+                    }
+                }
+            }
+        ]);
     };
 
-    const handleSummarize = async () => {
-        if (!transcript) return Alert.alert('Error', 'Transcript is empty.');
+    // Summarize transcript and save
+    const handleSummarize = async (filename) => {
+        if (!username) return;
         setLoading(true);
         try {
-            const res = await fetch(`${BACKEND_URL}/summarize-transcript`, {
+            const res = await fetch(`${BACKEND_URL}/transcripts/${filename}`);
+            const transcript = await res.text();
+
+            const sumRes = await fetch(`${BACKEND_URL}/summarize-transcript`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ transcript }),
+                body: JSON.stringify({ transcript, username })
             });
-            const data = await res.json();
-            if (data.summary) setSummary(data.summary);
-            else Alert.alert('Error', data.error || 'Failed to summarize.');
+            const sumData = await sumRes.json();
+            if (sumData.error) throw new Error(sumData.error);
+
+            const summary = sumData.summary;
+
+            const saveRes = await fetch(`${BACKEND_URL}/save-summary`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: `summary_${filename}`, summary })
+            });
+            const saveData = await saveRes.json();
+            if (!saveData.success) throw new Error('Failed to save summary');
+
+            Alert.alert('Success', `Summary created for ${filename}`);
+            fetchSummaries();
         } catch (err) {
-            console.error('Summarization error:', err);
-            Alert.alert('Error', 'Failed to summarize transcript.');
+            console.error(err);
+            Alert.alert('Error', err.message || 'Failed to summarize');
         }
         setLoading(false);
     };
 
-    const handleSaveSummary = async () => {
-        if (!summary) return Alert.alert('Error', 'Summary is empty.');
+    // Show summary content
+    const openSummary = async (filename) => {
         try {
-            const res = await fetch(`${BACKEND_URL}/save-transcript`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    filename: `summary_${selectedNote}`,
-                    transcript: summary,
-                }),
-            });
-            const data = await res.json();
-            if (data.success) Alert.alert('Saved', 'Summary saved successfully!');
-            else Alert.alert('Error', 'Failed to save summary.');
+            const res = await fetch(`${BACKEND_URL}/summaries/${filename}`);
+            const text = await res.text();
+            setActiveSummary(filename);
+            setSummaryContent(text);
         } catch (err) {
-            console.error('Save error:', err);
-            Alert.alert('Error', 'Failed to save summary.');
+            console.error(err);
+            Alert.alert('Error', 'Failed to fetch summary');
         }
     };
 
-    const handleBack = () => {
-        setSelectedNote(null);
-        setTranscript('');
-        setSummary('');
+    // Delete summary
+    const deleteSummary = async (filename) => {
+        Alert.alert('Confirm', `Delete summary "${filename}"?`, [
+            { text: 'Cancel', style: 'cancel' },
+            {
+                text: 'Delete', style: 'destructive', onPress: async () => {
+                    try {
+                        const res = await fetch(`${BACKEND_URL}/delete-summary/${filename}`, { method: 'DELETE' });
+                        const data = await res.json();
+                        if (data.success) {
+                            Alert.alert('Deleted', filename);
+                            setActiveSummary(null);
+                            fetchSummaries();
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        Alert.alert('Error', 'Failed to delete summary');
+                    }
+                }
+            }
+        ]);
     };
 
     return (
-        <LinearGradient colors={['#6C63FF', '#7F56D9']} style={styles.container}>
-            {!selectedNote ? (
-                <ScrollView contentContainerStyle={styles.notesList}>
-                    {notes.map((note, index) => (
-                        <TouchableOpacity
-                            key={index}
-                            style={styles.noteButton}
-                            onPress={() => handleNoteSelect(note)}
-                        >
-                            <Text style={styles.noteButtonText}>{note}</Text>
+        <SafeAreaView style={styles.container}>
+            <ScrollView contentContainerStyle={styles.content}>
+                <Text style={styles.sectionTitle}>Transcripts</Text>
+                {transcripts.map((t, idx) => (
+                    <View key={idx} style={styles.itemRow}>
+                        <TouchableOpacity style={styles.itemButton} onPress={() => handleSummarize(t)}>
+                            <Text style={styles.buttonText}>{t}</Text>
                         </TouchableOpacity>
-                    ))}
-                </ScrollView>
-            ) : (
-                <ScrollView contentContainerStyle={styles.noteContent}>
-                    <Text style={styles.sectionLabel}>Transcript:</Text>
-                    <Text style={styles.transcriptText}>{transcript}</Text>
+                        <TouchableOpacity style={styles.deleteButton} onPress={() => deleteTranscript(t)}>
+                            <Text style={styles.deleteText}>Delete</Text>
+                        </TouchableOpacity>
+                    </View>
+                ))}
 
-                    <TouchableOpacity style={styles.summarizeButton} onPress={handleSummarize}>
-                        <Text style={styles.buttonText}>{loading ? 'Summarizing...' : 'Summarize'}</Text>
-                    </TouchableOpacity>
+                <View style={styles.divider} />
 
-                    {summary ? (
-                        <>
-                            <Text style={styles.sectionLabel}>Summary:</Text>
-                            <Text style={styles.summaryText}>{summary}</Text>
-                            <TouchableOpacity style={styles.saveButton} onPress={handleSaveSummary}>
-                                <Text style={styles.buttonText}>Save Summary</Text>
+                <Text style={styles.sectionTitle}>Summaries</Text>
+                {summaries.map((s, idx) => (
+                    <View key={idx}>
+                        <TouchableOpacity style={styles.itemButton} onPress={() => openSummary(s)}>
+                            <Text style={styles.buttonText}>{s}</Text>
+                        </TouchableOpacity>
+                    </View>
+                ))}
+
+                {activeSummary && (
+                    <View style={styles.summaryBox}>
+                        <Text style={styles.summaryTitle}>{activeSummary}</Text>
+                        <ScrollView style={{ flexGrow: 1 }}>
+                            <Text style={styles.summaryText}>{summaryContent}</Text>
+                        </ScrollView>
+                        <View style={styles.buttonRow}>
+                            <TouchableOpacity style={styles.actionButton} onPress={() => deleteSummary(activeSummary)}>
+                                <Text style={styles.actionText}>Delete</Text>
                             </TouchableOpacity>
-                        </>
-                    ) : null}
+                            <TouchableOpacity style={styles.actionButton} onPress={() => setActiveSummary(null)}>
+                                <Text style={styles.actionText}>Close</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                )}
 
-                    <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-                        <Text style={styles.buttonText}>Back</Text>
-                    </TouchableOpacity>
-                </ScrollView>
-            )}
-        </LinearGradient>
+                {loading && <ActivityIndicator size="large" color="#6C63FF" />}
+            </ScrollView>
+        </SafeAreaView>
     );
 }
-
 const styles = StyleSheet.create({
-    container: { flex: 1, paddingTop: 50 },
-    notesList: { alignItems: 'center', paddingBottom: 40 },
-    noteButton: {
-        backgroundColor: '#1E1B4B',
-        width: '85%',
-        paddingVertical: 20,
-        borderRadius: 15,
-        marginVertical: 10,
-        alignItems: 'center',
+    container: {
+        flex: 1,
+        padding: 15,
+        backgroundColor: '#0f0f0f', // dark background
     },
-    noteButtonText: { color: '#FFF', fontSize: 18 },
-    noteContent: { paddingHorizontal: 20, paddingBottom: 40 },
-    sectionLabel: { fontSize: 18, fontWeight: 'bold', color: '#FFF', marginTop: 20 },
-    transcriptText: {
-        fontSize: 16,
-        color: '#DDD',
+    content: { paddingBottom: 50 },
+    sectionTitle: {
+        fontSize: 22,
+        fontWeight: 'bold',
+        marginVertical: 10,
+        color: '#FFF', // white for headings
+    },
+    itemRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+    itemButton: {
+        flex: 1,
+        padding: 12,
+        backgroundColor: '#1E1B4B', // deep purple-blue
+        borderRadius: 10,
+        marginRight: 5,
+    },
+    deleteButton: {
+        padding: 12,
+        backgroundColor: '#F97316', // orange for delete
+        borderRadius: 10,
+    },
+    buttonText: { color: '#FFF', fontWeight: 'bold' },
+    deleteText: { color: '#FFF', fontWeight: 'bold' },
+    divider: { height: 2, backgroundColor: '#555', marginVertical: 15 },
+    summaryBox: {
+        backgroundColor: '#FFF', // white background for summary
+        padding: 15,
+        borderRadius: 10,
         marginTop: 10,
-        fontFamily: 'monospace',
-        lineHeight: 22,
+        borderWidth: 1,
+        borderColor: '#A3E635', // bright green border
+    },
+    summaryTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        marginBottom: 10,
+        color: '#000', // black title text
     },
     summaryText: {
         fontSize: 16,
-        color: '#A3E635',
-        marginTop: 10,
+        color: '#000', // black summary text
         fontFamily: 'monospace',
         lineHeight: 22,
     },
-    summarizeButton: {
-        backgroundColor: '#38BDF8',
-        padding: 14,
+    buttonRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
+    actionButton: {
+        backgroundColor: '#38BDF8', // cyan button for actions
+        padding: 10,
         borderRadius: 10,
+        flex: 1,
         alignItems: 'center',
-        marginTop: 20,
     },
-    saveButton: {
-        backgroundColor: '#4ADE80',
-        padding: 14,
-        borderRadius: 10,
-        alignItems: 'center',
-        marginTop: 20,
-    },
-    backButton: {
-        backgroundColor: '#F87171',
-        padding: 14,
-        borderRadius: 10,
-        alignItems: 'center',
-        marginTop: 30,
-    },
-    buttonText: {
-        fontSize: 16,
-        fontWeight: 'bold',
-        color: '#FFF',
-    },
+    actionText: { color: '#FFF', fontWeight: 'bold' },
+    loadingIndicator: { marginTop: 20 },
 });
+
