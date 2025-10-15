@@ -1,4 +1,10 @@
 
+/*
+* Developed By: Adonyas Kibru
+* Date: 10/15/2025
+* Version: 1.0
+* 
+*/
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -8,6 +14,7 @@ import RecordingsScreen from './Frontend/Record';
 import NotesScreen from './Frontend/Notes';
 import SettingsScreen from './Frontend/Setting';
 import QuizzesScreen from './Frontend/Quizzes';
+import Flashcard from './Frontend/Flashcard';
 
 const Stack = createNativeStackNavigator();
 
@@ -20,6 +27,7 @@ export default function App() {
         <Stack.Screen name="Notes" component={NotesScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
         <Stack.Screen name="Quizzes" component={QuizzesScreen} />
+        <Stack.Screen name="Flashcard" component={Flashcard} />
       </Stack.Navigator>
     </NavigationContainer>
   );

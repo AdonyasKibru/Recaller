@@ -1,3 +1,25 @@
+/**
+ * NotesScreen Component
+ * 
+ * Purpose:
+ * This screen allows users to view, summarize, and manage their audio transcripts
+ * and automatically generated summaries. Users can:
+ * - View a list of existing transcripts
+ * - Generate summaries from transcripts
+ * - View existing summaries
+ * - Delete transcripts and summaries
+ * 
+ * Features:
+ * - Fetches data from backend APIs for transcripts and summaries
+ * - Supports safe area and scrollable layout
+ * - Shows active summary content in a separate box
+ * - Provides loading indicators during async operations
+ * 
+ * Developed By: Adonyas Kibru
+ * Date: 10/15/2025
+ * Version: 1.0
+ */
+
 import React, { useState, useEffect } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity,
@@ -5,8 +27,6 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
 
 const BACKEND_URL = 'http://10.0.0.65:5000';
 
@@ -18,7 +38,7 @@ export default function Notes() {
     const [activeSummary, setActiveSummary] = useState(null);
     const [summaryContent, setSummaryContent] = useState('');
 
-    // Load username
+    /** Load username from AsyncStorage */
     useEffect(() => {
         const loadUsername = async () => {
             const storedUsername = await AsyncStorage.getItem('username');
@@ -28,12 +48,13 @@ export default function Notes() {
         loadUsername();
     }, []);
 
-    // Fetch transcripts & summaries
+    /** Fetch transcripts and summaries when screen loads */
     useEffect(() => {
         fetchTranscripts();
         fetchSummaries();
     }, []);
 
+    /** Fetch transcript list from backend */
     const fetchTranscripts = async () => {
         try {
             const res = await fetch(`${BACKEND_URL}/transcriptions-list`);
@@ -45,6 +66,7 @@ export default function Notes() {
         }
     };
 
+    /** Fetch summary list from backend */
     const fetchSummaries = async () => {
         try {
             const res = await fetch(`${BACKEND_URL}/summaries-list`);
@@ -56,7 +78,7 @@ export default function Notes() {
         }
     };
 
-    // Delete transcript
+    /** Delete a transcript */
     const deleteTranscript = async (filename) => {
         Alert.alert('Confirm', `Delete transcript "${filename}"?`, [
             { text: 'Cancel', style: 'cancel' },
@@ -78,7 +100,7 @@ export default function Notes() {
         ]);
     };
 
-    // Summarize transcript and save
+    /** Summarize a transcript and save the summary */
     const handleSummarize = async (filename) => {
         if (!username) return;
         setLoading(true);
@@ -113,7 +135,7 @@ export default function Notes() {
         setLoading(false);
     };
 
-    // Show summary content
+    /** Open and display a summary */
     const openSummary = async (filename) => {
         try {
             const res = await fetch(`${BACKEND_URL}/summaries/${filename}`);
@@ -126,7 +148,7 @@ export default function Notes() {
         }
     };
 
-    // Delete summary
+    /** Delete a summary */
     const deleteSummary = async (filename) => {
         Alert.alert('Confirm', `Delete summary "${filename}"?`, [
             { text: 'Cancel', style: 'cancel' },
@@ -197,58 +219,59 @@ export default function Notes() {
         </SafeAreaView>
     );
 }
+
 const styles = StyleSheet.create({
     container: {
         flex: 1,
         padding: 15,
-        backgroundColor: '#0f0f0f', // dark background
+        backgroundColor: '#0f0f0f',
     },
     content: { paddingBottom: 50 },
     sectionTitle: {
         fontSize: 22,
         fontWeight: 'bold',
         marginVertical: 10,
-        color: '#FFF', // white for headings
+        color: '#FFF',
     },
     itemRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
     itemButton: {
         flex: 1,
         padding: 12,
-        backgroundColor: '#1E1B4B', // deep purple-blue
+        backgroundColor: '#1E1B4B',
         borderRadius: 10,
         marginRight: 5,
     },
     deleteButton: {
         padding: 12,
-        backgroundColor: '#F97316', // orange for delete
+        backgroundColor: '#F97316',
         borderRadius: 10,
     },
     buttonText: { color: '#FFF', fontWeight: 'bold' },
     deleteText: { color: '#FFF', fontWeight: 'bold' },
     divider: { height: 2, backgroundColor: '#555', marginVertical: 15 },
     summaryBox: {
-        backgroundColor: '#FFF', // white background for summary
+        backgroundColor: '#FFF',
         padding: 15,
         borderRadius: 10,
         marginTop: 10,
         borderWidth: 1,
-        borderColor: '#A3E635', // bright green border
+        borderColor: '#A3E635',
     },
     summaryTitle: {
         fontSize: 18,
         fontWeight: 'bold',
         marginBottom: 10,
-        color: '#000', // black title text
+        color: '#000',
     },
     summaryText: {
         fontSize: 16,
-        color: '#000', // black summary text
+        color: '#000',
         fontFamily: 'monospace',
         lineHeight: 22,
     },
     buttonRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
     actionButton: {
-        backgroundColor: '#38BDF8', // cyan button for actions
+        backgroundColor: '#38BDF8',
         padding: 10,
         borderRadius: 10,
         flex: 1,
@@ -257,4 +280,3 @@ const styles = StyleSheet.create({
     actionText: { color: '#FFF', fontWeight: 'bold' },
     loadingIndicator: { marginTop: 20 },
 });
-

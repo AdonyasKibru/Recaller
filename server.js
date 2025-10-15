@@ -1,3 +1,43 @@
+/**
+ * server.js
+ * 
+ * Backend server for managing recordings, transcripts, summaries, and quizzes.
+ * 
+ * Features:
+ * 1. RECORDINGS
+ *    - Upload recordings
+ *    - List recordings
+ *    - Delete recordings
+ *    - Transcribe recordings using Google Speech
+ * 
+ * 2. SETTINGS / USERS
+ *    - Save user keys (OpenAI, Google Speech)
+ *    - Delete users
+ *    - List all users
+ * 
+ * 3. NOTES / TRANSCRIPTS
+ *    - List transcripts
+ *    - Fetch transcript content
+ *    - Summarize transcripts using OpenAI
+ *    - Save and delete summaries
+ * 
+ * 4. QUIZZES
+ *    - Generate quizzes from summaries via OpenAI
+ *    - Save quizzes per user
+ *    - List quizzes
+ *    - Fetch specific quiz
+ *    - Delete quizzes
+ * 
+ * Dependencies:
+ * - express, fs, path, cors, multer
+ * - @google-cloud/speech
+ * - openai
+ * 
+ * Developed By: Adonyas Kibru
+ * Date: 10/15/2025
+ * Version: 1.0
+ */
+
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -16,6 +56,7 @@ app.use(express.json());
 const recordingsDir = path.join(__dirname, 'recordings');
 const transcriptsDir = path.join(__dirname, 'transcripts');
 const usersDir = path.join(__dirname, 'users');
+
 [recordingsDir, transcriptsDir, usersDir].forEach(dir => {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir);
 });
@@ -136,13 +177,49 @@ app.post('/save-user-keys', upload.single('speechKey'), (req, res) => {
     res.json({ success: true, message: 'Keys saved successfully' });
 });
 
+// DELETE /delete-user/:username
+app.delete('/delete-user/:username', (req, res) => {
+    const username = req.params.username;
+    if (!username) return res.status(400).json({ error: 'Username required' });
+
+    const userFolder = path.join(usersDir, username);
+
+    if (!fs.existsSync(userFolder)) return res.status(404).json({ error: 'User not found' });
+
+    try {
+        fs.rmSync(userFolder, { recursive: true, force: true });
+
+        // Optionally, delete quizzes folder if it exists
+        const userQuizDir = path.join(__dirname, '../quizzes', username);
+        if (fs.existsSync(userQuizDir)) fs.rmSync(userQuizDir, { recursive: true, force: true });
+
+        res.json({ success: true, message: `User ${username} deleted successfully` });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to delete user' });
+    }
+});
+
+app.get('/users-list', (req, res) => {
+    try {
+        if (!fs.existsSync(usersDir)) return res.json([]); // no users yet
+        const users = fs.readdirSync(usersDir).filter(file => {
+            const userPath = path.join(usersDir, file);
+            return fs.lstatSync(userPath).isDirectory();
+        });
+        res.json(users);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to fetch users' });
+    }
+});
 // ================== NOTES ==================
 
-// 1. List all transcript files
+// List all transcript files
 app.get('/transcriptions-list', (req, res) => {
     try {
         const files = fs.readdirSync(transcriptsDir)
-            .filter(file => file.endsWith('.txt')); // only .txt transcripts
+            .filter(file => file.endsWith('.txt'));
         res.json(files);
     } catch (err) {
         console.error('[BACKEND] Failed to list transcriptions:', err);
@@ -150,7 +227,7 @@ app.get('/transcriptions-list', (req, res) => {
     }
 });
 
-// 2. Fetch a specific transcript file
+// Fetch a specific transcript file
 app.get('/transcripts/:filename', (req, res) => {
     try {
         const { filename } = req.params;
@@ -238,7 +315,7 @@ app.delete('/delete-transcript/:filename', (req, res) => {
 });
 
 
-// 1️⃣ List all saved summaries
+// List all saved summaries
 app.get('/summaries-list', (req, res) => {
     try {
         const files = fs.readdirSync(summariesDir).filter(file => file.endsWith('.txt'));
@@ -249,7 +326,7 @@ app.get('/summaries-list', (req, res) => {
     }
 });
 
-// 2️⃣ Fetch a specific summary
+// Fetch a specific summary
 app.get('/summaries/:filename', (req, res) => {
     try {
         const { filename } = req.params;
@@ -265,7 +342,7 @@ app.get('/summaries/:filename', (req, res) => {
     }
 });
 
-// 3️⃣ Delete a summary
+// Delete a summary
 app.delete('/delete-summary/:filename', (req, res) => {
     const { filename } = req.params;
     const filePath = path.join(summariesDir, filename);
@@ -279,6 +356,106 @@ app.delete('/delete-summary/:filename', (req, res) => {
         console.error('[BACKEND] Delete summary error:', err);
         res.status(500).json({ success: false, error: 'Failed to delete summary' });
     }
+});
+
+app.post('/generate-quiz', async (req, res) => {
+    const { summary, username } = req.body;
+
+    if (!summary || !username) {
+        return res.status(400).json({ error: 'Summary content and username are required' });
+    }
+
+    try {
+        // Load user's OpenAI key
+        const keyPath = path.join(usersDir, username, 'openai-key.txt');
+        if (!fs.existsSync(keyPath)) {
+            return res.status(400).json({ error: 'OpenAI key not found for this user' });
+        }
+
+        const openaiKey = fs.readFileSync(keyPath, 'utf8').trim();
+        const openai = new OpenAI({ apiKey: openaiKey });
+
+        // Call OpenAI to generate quiz
+        const completion = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+                {
+                    role: "system",
+                    content: `You are a quiz generator. Respond ONLY with a JSON array of 5 multiple-choice questions. 
+            Each question must have: question (string), options (array of strings), answer (string). 
+            Do NOT include any extra text.`
+                },
+                { role: 'user', content: `Generate 5 multiple-choice questions from this text:\n\n${summary}` },
+            ],
+        });
+
+        const rawContent = completion.choices[0].message?.content?.trim();
+
+        // Try JSON parsing
+        let questions;
+        try {
+            questions = JSON.parse(rawContent);
+        } catch (err) {
+            console.warn('⚠️ OpenAI returned non-JSON text, using fallback.');
+            questions = [{ question: rawContent, options: [], answer: '' }];
+        }
+
+        res.json({ questions });
+
+    } catch (err) {
+        console.error('[BACKEND] Quiz generation failed:', err);
+        res.status(500).json({ error: 'Failed to generate quiz' });
+    }
+});
+
+// Save a quiz
+app.post('/save-quiz', (req, res) => {
+    const { quizName, quizQuestions, username } = req.body;
+    if (!quizName || !quizQuestions || !username)
+        return res.status(400).json({ error: 'Quiz name, questions, and username are required' });
+
+    try {
+        const userDir = path.join(usersDir, username, 'quizzes');
+        if (!fs.existsSync(userDir)) fs.mkdirSync(userDir, { recursive: true });
+
+        const filePath = path.join(userDir, `${quizName}.json`);
+        fs.writeFileSync(filePath, JSON.stringify(quizQuestions, null, 2), 'utf8');
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[BACKEND] Save quiz error:', err);
+        res.status(500).json({ error: 'Failed to save quiz' });
+    }
+});
+
+// List quizzes
+app.get('/quizzes-list/:username', (req, res) => {
+    const { username } = req.params;
+    const userDir = path.join(usersDir, username, 'quizzes');
+    if (!fs.existsSync(userDir)) return res.json([]);
+
+    const files = fs.readdirSync(userDir).filter(f => f.endsWith('.json'));
+    res.json(files);
+});
+
+// Fetch quiz
+app.get('/quizzes/:username/:filename', (req, res) => {
+    const { username, filename } = req.params;
+    const filePath = path.join(usersDir, username, 'quizzes', filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Quiz not found' });
+
+    const quiz = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    res.json(quiz);
+});
+
+// Delete quiz
+app.delete('/delete-quiz/:username/:filename', (req, res) => {
+    const { username, filename } = req.params;
+    const filePath = path.join(usersDir, username, 'quizzes', filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Quiz not found' });
+
+    fs.unlinkSync(filePath);
+    res.json({ success: true });
 });
 
 

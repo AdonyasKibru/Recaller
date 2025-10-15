@@ -1,9 +1,45 @@
+/**
+ * HomeScreen Component
+ * 
+ * Purpose:
+ * This is the main landing page of the Recaller app. It provides users with
+ * quick access to the primary features of the app: recording audio, viewing notes,
+ * taking quizzes, and adjusting settings.
+ * 
+ * Features:
+ * - Displays a welcoming header with gradient background and app title
+ * - Provides four interactive cards for navigation:
+ *   1. Choose Audio: Navigate to the audio recording page
+ *   2. Notes: Navigate to the user's notes page
+ *   3. Quizzes: Navigate to the quizzes page
+ *   4. Settings: Navigate to the app settings page
+ * - Uses icons from Ionicons and MaterialIcons for visual clarity
+ * - Supports safe area insets for proper layout on all devices
+ * - Responsive styling with shadows and rounded cards for a modern look
+ * 
+ * Developed By: Adonyas Kibru
+ * Date: 10/15/2025
+ * Version: 1.0
+ */
+
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+/**
+ * HomeScreen Function
+ * 
+ * Displays the main navigation page for the app.
+ * Provides interactive cards for navigating to Record, Notes, Quizzes, and Settings screens.
+ * 
+ * Props:
+ * - navigation: object provided by React Navigation for navigating between screens
+ * 
+ * Returns:
+ * - JSX layout for the home page
+ */
 const HomeScreen = ({ navigation }) => {
     return (
         <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>

@@ -19,7 +19,6 @@
     "dotenv": "^16.5.0",
     "expo": "^54.0.0",
     "expo-av": "~16.0.7",
-    "expo-document-picker": "~14.0.7",
     "expo-linear-gradient": "~15.0.7",
     "expo-secure-store": "~15.0.7",
     "expo-sharing": "~14.0.7",
