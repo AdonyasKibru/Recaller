@@ -1,58 +1,65 @@
-This is Recaller my personal test project. I started this project because I wanted to test my skills
-and develop some application that is useful and also something that was of my own idea.
+    Recaller
 
-Idea : The main idea behind Recaller is to help students remember what they studied. 
-       When it's exam time or they need a quick review, the app gives them easy access to their
-       own study material in a clear and organized way.
+This is Recaller, my personal test project. I started this project because I wanted to test my skills and
+develop an application that is both useful and built entirely from my own idea.
 
-The idea I had when I started was the app would have three main features:
+    Project Idea
 
-    1. Start New Session: 
-        - Users can press a “Start” button to begin a new session.
-        - The app records their voice while they read out loud (limited to 10 minutes).
-        - The audio is then turned into text using Google's Speech-to-Text API.
-        - After that, the user can either summarize the text or delete it.
+The main idea behind Recaller is to help students remember what they studied. When it is exam time or they need 
+a quick review, the app gives them easy access to their own study material in a clear and organized way.
 
-    2. Summarization:
-        - If they choose to summarize, the app sends the text to ChatGPT (OpenAI API).
-        - It returns clean, short bullet-point notes based on what was said.
+    Main Features
 
-    3. Flashcards / Quizzes:
-        - The app can also create flashcard-style quiz questions from the same transcript.
-        - This helps students test themselves on what they just studied.
+1. Upload Audio Files
 
-What I’ve Done:
+Users can upload audio files from their device with a .wav extension.
+The audio is then transcribed into text using the Google Speech-to-Text API.
+Once the transcription is complete, the user can choose to summarize the text or delete it.
 
-    - I built a simple and clean user interface using React Native and Expo Go.
-    - I was able to transcribe sample audio and show the text in the app.
-    - I also created sample flashcard quizzes, which could be reused in a future quiz app.
+2. Summarization
 
-Things That Didn’t Work:
+If the user chooses to summarize, the transcript is sent to the OpenAI API.
+The AI returns clean and organized notes written in bullet-point form that capture the main ideas from the transcript.
+This helps students review key information quickly.
 
-    1. Expo Audio Issue: Expo records audio in .m4a format, but Google’s API only works with .wav. 
-       So I had to manually add .wav files into the app’s storage to test it. Not ideal.
-    
-    2. OpenAI API Limits: I couldn’t test the ChatGPT feature fully because I ran out of free API credits
-       and didn’t want to pay just for this test.
+3. Flashcards and Quizzes
 
-    3. Recording Directly in App: Right now, it's not easy to save .wav recordings directly from the app
-       without changing how Expo works.
+The app can also create quiz-style flashcards from the transcript.
+Each flashcard shows one question and its choices at a time, allowing users to flip through and test themselves.
+The generated quizzes are saved for future practice and can be viewed at any time.
 
-Tools I Used:
-    - React Native (frontend)
-    - Expo Go (for testing)
-    - Node.js + Express (backend)
-    - Google Speech-to-Text API
-    - OpenAI API (ChatGPT – only tested with samples)
+4. User Management
 
-Final Thoughts:
-
-This is one of my first self-made, self-paced projects, and I’m really proud of it. Even though it’s not fully done,
-it taught me a lot, and I’m excited to take on more challenging projects in the future.
+Since the application uses api and I did not want to share my api keys. The application includes a user management 
+system in the form of stting. In which users can create and save their own profile. The qould need to insert their
+prefered username, open AI api key, and a google speach to text transcription api json key. This allows every user
+to user thier own apis and manage thier own payments.
 
 
+    Tools and Technologies
 
-        How to Run This Project (For Developers)
+Frontend
+
+    React Native
+
+    Expo Go
+
+    AsyncStorage for local data
+
+Backend
+
+    Node.js with Express
+
+    File system for managing user data
+
+APIs
+
+    Google Speech-to-Text API for transcription
+
+    OpenAI API for summaries and quiz generation
+
+
+    How to Run This Project (For Developers)
 
 If you'd like to clone this project and run it yourself, here’s how to get started:
 
@@ -64,23 +71,13 @@ If you'd like to clone this project and run it yourself, here’s how to get sta
 2. Install Backend Dependencies
     npm install
 
-3. Add Required API Keys
- Google Cloud Speech-to-Text
-    Add your speech-key.json file (downloaded from Google Cloud Console). Place it in the root of the project.
-
- OpenAI API Key
-    Create a .env file in the root of the project. 
-    Add your OpenAI key:
-        OPENAI_API_KEY=your_openai_api_key_here
-
-
-4. Start the Backend Server
+3. Start the Backend Server
 
     node server.js
 
 The backend will run at: http://localhost:5000
 
-5. Run the Frontend (React Native with Expo)
+4. Run the Frontend (React Native with Expo)
 Navigate to your React Native frontend directory (if separate).
 If it's also in the root, skip this step.
 
@@ -91,9 +88,12 @@ npx expo start
 
 Open the Expo Go app on your phone and scan the QR code to run the app.
 
-6. Test Features
+5. Test Features
+    - fill out the settings to creat like a user profile.
     - Add some .wav files to the recordings/ folder.
     - Use the app to list and transcribe them.
-    - Use the summarize feature if your OpenAI key is working.
-    - View or save the summaries and quizzes.
+    - Use the summarize feature to summarize it.
+    - then use the summerized not to generate quizzes.
+
+For more watch the Recaller_Demo.mp4
 
